@@ -13,8 +13,7 @@ import (
 // ValidationError представляет ошибку валидации
 type ValidationError struct {
 	Line    int
-	Field   string
-	Message string
+	Message string // Теперь Message содержит полное сообщение, включая имя поля
 }
 
 func (e ValidationError) Format(filename string) string {
@@ -57,7 +56,6 @@ func validateYAMLFile(filename string) []ValidationError {
 	if err != nil {
 		return []ValidationError{{
 			Line:    0,
-			Field:   "",
 			Message: fmt.Sprintf("cannot read file: %v", err),
 		}}
 	}
@@ -66,7 +64,6 @@ func validateYAMLFile(filename string) []ValidationError {
 	if err := yaml.Unmarshal(data, &root); err != nil {
 		return []ValidationError{{
 			Line:    0,
-			Field:   "",
 			Message: fmt.Sprintf("cannot parse YAML: %v", err),
 		}}
 	}
@@ -74,7 +71,6 @@ func validateYAMLFile(filename string) []ValidationError {
 	if len(root.Content) == 0 {
 		return []ValidationError{{
 			Line:    0,
-			Field:   "",
 			Message: "empty YAML document",
 		}}
 	}
@@ -88,7 +84,6 @@ func validateDocument(node *yaml.Node) []ValidationError {
 	if node.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "",
 			Message: "root must be a mapping",
 		})
 		return errors
@@ -121,20 +116,17 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 	if apiNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "apiVersion",
-			Message: "is required",
+			Message: "apiVersion is required",
 		})
 	} else if apiNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    apiNode.Line,
-			Field:   "apiVersion",
-			Message: "must be string",
+			Message: "apiVersion must be string",
 		})
 	} else if apiNode.Value != "v1" {
 		errors = append(errors, ValidationError{
 			Line:    apiNode.Line,
-			Field:   "apiVersion",
-			Message: fmt.Sprintf("has unsupported value '%s'", apiNode.Value),
+			Message: fmt.Sprintf("apiVersion has unsupported value '%s'", apiNode.Value),
 		})
 	}
 
@@ -143,20 +135,17 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 	if kindNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "kind",
-			Message: "is required",
+			Message: "kind is required",
 		})
 	} else if kindNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    kindNode.Line,
-			Field:   "kind",
-			Message: "must be string",
+			Message: "kind must be string",
 		})
 	} else if kindNode.Value != "Pod" {
 		errors = append(errors, ValidationError{
 			Line:    kindNode.Line,
-			Field:   "kind",
-			Message: fmt.Sprintf("has unsupported value '%s'", kindNode.Value),
+			Message: fmt.Sprintf("kind has unsupported value '%s'", kindNode.Value),
 		})
 	}
 
@@ -165,8 +154,7 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 	if metaNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "metadata",
-			Message: "is required",
+			Message: "metadata is required",
 		})
 	} else {
 		errors = append(errors, validateMetadata(metaNode)...)
@@ -177,8 +165,7 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 	if specNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "spec",
-			Message: "is required",
+			Message: "spec is required",
 		})
 	} else {
 		errors = append(errors, validateSpec(specNode)...)
@@ -193,8 +180,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 	if node.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "metadata",
-			Message: "must be mapping",
+			Message: "metadata must be mapping",
 		})
 		return errors
 	}
@@ -204,21 +190,17 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 	if nameNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "metadata.name",
-			Message: "is required",
+			Message: "metadata.name is required",
 		})
 	} else if nameNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    nameNode.Line,
-			Field:   "metadata.name",
-			Message: "must be string",
+			Message: "metadata.name must be string",
 		})
 	} else if strings.TrimSpace(nameNode.Value) == "" {
-		// Для пустой строки используем просто "name"
 		errors = append(errors, ValidationError{
 			Line:    nameNode.Line,
-			Field:   "name",
-			Message: "is required",
+			Message: "name is required",
 		})
 	}
 
@@ -226,8 +208,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 	if _, nsNode := getMap(node, "namespace"); nsNode != nil && nsNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    nsNode.Line,
-			Field:   "metadata.namespace",
-			Message: "must be string",
+			Message: "metadata.namespace must be string",
 		})
 	}
 
@@ -236,8 +217,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 		if labelsNode.Kind != yaml.MappingNode {
 			errors = append(errors, ValidationError{
 				Line:    labelsNode.Line,
-				Field:   "metadata.labels",
-				Message: "must be mapping",
+				Message: "metadata.labels must be mapping",
 			})
 		} else {
 			// Проверяем, что все значения - строки
@@ -246,8 +226,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 				if valueNode.Kind != yaml.ScalarNode {
 					errors = append(errors, ValidationError{
 						Line:    valueNode.Line,
-						Field:   "metadata.labels",
-						Message: "has invalid format ''",
+						Message: "metadata.labels has invalid format ''",
 					})
 					break
 				}
@@ -264,8 +243,7 @@ func validateSpec(node *yaml.Node) []ValidationError {
 	if node.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "spec",
-			Message: "must be mapping",
+			Message: "spec must be mapping",
 		})
 		return errors
 	}
@@ -280,8 +258,7 @@ func validateSpec(node *yaml.Node) []ValidationError {
 	if containersNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "spec.containers",
-			Message: "is required",
+			Message: "spec.containers is required",
 		})
 	} else {
 		errors = append(errors, validateContainers(containersNode)...)
@@ -298,8 +275,7 @@ func validateOS(node *yaml.Node) []ValidationError {
 		if val != "linux" && val != "windows" {
 			errors = append(errors, ValidationError{
 				Line:    node.Line,
-				Field:   "os",
-				Message: fmt.Sprintf("has unsupported value '%s'", node.Value),
+				Message: fmt.Sprintf("os has unsupported value '%s'", node.Value),
 			})
 		}
 	} else if node.Kind == yaml.MappingNode {
@@ -307,30 +283,26 @@ func validateOS(node *yaml.Node) []ValidationError {
 		if nameNode == nil {
 			errors = append(errors, ValidationError{
 				Line:    node.Line,
-				Field:   "spec.os.name",
-				Message: "is required",
+				Message: "spec.os.name is required",
 			})
 		} else if nameNode.Kind != yaml.ScalarNode {
 			errors = append(errors, ValidationError{
 				Line:    nameNode.Line,
-				Field:   "spec.os.name",
-				Message: "must be string",
+				Message: "spec.os.name must be string",
 			})
 		} else {
 			val := strings.ToLower(nameNode.Value)
 			if val != "linux" && val != "windows" {
 				errors = append(errors, ValidationError{
 					Line:    nameNode.Line,
-					Field:   "os",
-					Message: fmt.Sprintf("has unsupported value '%s'", nameNode.Value),
+					Message: fmt.Sprintf("os has unsupported value '%s'", nameNode.Value),
 				})
 			}
 		}
 	} else {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "spec.os",
-			Message: "must be object",
+			Message: "spec.os must be object",
 		})
 	}
 
@@ -343,8 +315,7 @@ func validateContainers(node *yaml.Node) []ValidationError {
 	if node.Kind != yaml.SequenceNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "spec.containers",
-			Message: "must be array",
+			Message: "spec.containers must be array",
 		})
 		return errors
 	}
@@ -352,8 +323,7 @@ func validateContainers(node *yaml.Node) []ValidationError {
 	if len(node.Content) == 0 {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "spec.containers",
-			Message: "must contain at least one container",
+			Message: "spec.containers must contain at least one container",
 		})
 		return errors
 	}
@@ -372,8 +342,7 @@ func validateContainers(node *yaml.Node) []ValidationError {
 				if containerNames[nameNode.Value] {
 					errors = append(errors, ValidationError{
 						Line:    nameNode.Line,
-						Field:   "containers.name",
-						Message: fmt.Sprintf("has invalid format '%s'", nameNode.Value),
+						Message: fmt.Sprintf("containers.name has invalid format '%s'", nameNode.Value),
 					})
 				}
 				containerNames[nameNode.Value] = true
@@ -390,8 +359,7 @@ func validateContainer(node *yaml.Node) []ValidationError {
 	if node.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "container",
-			Message: "must be mapping",
+			Message: "container must be mapping",
 		})
 		return errors
 	}
@@ -401,29 +369,24 @@ func validateContainer(node *yaml.Node) []ValidationError {
 	if nameNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "name",
-			Message: "is required",
+			Message: "name is required",
 		})
 	} else if nameNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    nameNode.Line,
-			Field:   "name",
-			Message: "must be string",
+			Message: "name must be string",
 		})
 	} else {
 		// Для пустой строки
-if strings.TrimSpace(nameNode.Value) == "" {
-    errors = append(errors, ValidationError{
-        Line:    nameNode.Line,
-        Field:   "name",
-        Message: "name is required",  // ← Добавьте "name " в начало
-    })
-}
+		if strings.TrimSpace(nameNode.Value) == "" {
+			errors = append(errors, ValidationError{
+				Line:    nameNode.Line,
+				Message: "name is required",
+			})
 		} else if !snakeCaseRegex.MatchString(nameNode.Value) {
 			errors = append(errors, ValidationError{
 				Line:    nameNode.Line,
-				Field:   "containers.name",
-				Message: fmt.Sprintf("has invalid format '%s'", nameNode.Value),
+				Message: fmt.Sprintf("containers.name has invalid format '%s'", nameNode.Value),
 			})
 		}
 	}
@@ -433,20 +396,17 @@ if strings.TrimSpace(nameNode.Value) == "" {
 	if imageNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "containers.image",
-			Message: "is required",
+			Message: "containers.image is required",
 		})
 	} else if imageNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    imageNode.Line,
-			Field:   "containers.image",
-			Message: "must be string",
+			Message: "containers.image must be string",
 		})
 	} else if !imageRegex.MatchString(imageNode.Value) {
 		errors = append(errors, ValidationError{
 			Line:    imageNode.Line,
-			Field:   "containers.image",
-			Message: fmt.Sprintf("has invalid format '%s'", imageNode.Value),
+			Message: fmt.Sprintf("containers.image has invalid format '%s'", imageNode.Value),
 		})
 	}
 
@@ -455,8 +415,7 @@ if strings.TrimSpace(nameNode.Value) == "" {
 		if portsNode.Kind != yaml.SequenceNode {
 			errors = append(errors, ValidationError{
 				Line:    portsNode.Line,
-				Field:   "containers.ports",
-				Message: "must be array",
+				Message: "containers.ports must be array",
 			})
 		} else {
 			for _, portNode := range portsNode.Content {
@@ -480,14 +439,12 @@ if strings.TrimSpace(nameNode.Value) == "" {
 	if resourcesNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "containers.resources",
-			Message: "is required",
+			Message: "containers.resources is required",
 		})
 	} else if resourcesNode.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    resourcesNode.Line,
-			Field:   "containers.resources",
-			Message: "must be mapping",
+			Message: "containers.resources must be mapping",
 		})
 	} else {
 		errors = append(errors, validateResources(resourcesNode)...)
@@ -502,8 +459,7 @@ func validateContainerPort(node *yaml.Node) []ValidationError {
 	if node.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "port",
-			Message: "must be mapping",
+			Message: "port must be mapping",
 		})
 		return errors
 	}
@@ -513,28 +469,24 @@ func validateContainerPort(node *yaml.Node) []ValidationError {
 	if portNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "containers.ports.containerPort",
-			Message: "is required",
+			Message: "containers.ports.containerPort is required",
 		})
 	} else if portNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    portNode.Line,
-			Field:   "containerPort",
-			Message: "must be int",
+			Message: "containerPort must be int",
 		})
 	} else {
 		port, err := strconv.Atoi(portNode.Value)
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Line:    portNode.Line,
-				Field:   "containerPort",
-				Message: "must be int",
+				Message: "containerPort must be int",
 			})
 		} else if port < portMin || port > portMax {
 			errors = append(errors, ValidationError{
 				Line:    portNode.Line,
-				Field:   "containerPort",
-				Message: "value out of range",
+				Message: "containerPort value out of range",
 			})
 		}
 	}
@@ -544,16 +496,14 @@ func validateContainerPort(node *yaml.Node) []ValidationError {
 		if protoNode.Kind != yaml.ScalarNode {
 			errors = append(errors, ValidationError{
 				Line:    protoNode.Line,
-				Field:   "protocol",
-				Message: "must be string",
+				Message: "protocol must be string",
 			})
 		} else {
 			up := strings.ToUpper(protoNode.Value)
 			if up != "TCP" && up != "UDP" {
 				errors = append(errors, ValidationError{
 					Line:    protoNode.Line,
-					Field:   "protocol",
-					Message: fmt.Sprintf("has unsupported value '%s'", protoNode.Value),
+					Message: fmt.Sprintf("protocol has unsupported value '%s'", protoNode.Value),
 				})
 			}
 		}
@@ -568,8 +518,7 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 	if node.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   field,
-			Message: "must be mapping",
+			Message: field + " must be mapping",
 		})
 		return errors
 	}
@@ -579,8 +528,7 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 	if httpGetNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   field + ".httpGet",
-			Message: "is required",
+			Message: field + ".httpGet is required",
 		})
 		return errors
 	}
@@ -588,8 +536,7 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 	if httpGetNode.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    httpGetNode.Line,
-			Field:   field + ".httpGet",
-			Message: "must be mapping",
+			Message: field + ".httpGet must be mapping",
 		})
 		return errors
 	}
@@ -599,20 +546,17 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 	if pathNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    httpGetNode.Line,
-			Field:   field + ".httpGet.path",
-			Message: "is required",
+			Message: field + ".httpGet.path is required",
 		})
 	} else if pathNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    pathNode.Line,
-			Field:   field + ".httpGet.path",
-			Message: "must be string",
+			Message: field + ".httpGet.path must be string",
 		})
 	} else if !strings.HasPrefix(pathNode.Value, "/") {
 		errors = append(errors, ValidationError{
 			Line:    pathNode.Line,
-			Field:   field + ".httpGet.path",
-			Message: fmt.Sprintf("has invalid format '%s'", pathNode.Value),
+			Message: fmt.Sprintf("%s.httpGet.path has invalid format '%s'", field, pathNode.Value),
 		})
 	}
 
@@ -621,28 +565,24 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 	if portNode == nil {
 		errors = append(errors, ValidationError{
 			Line:    httpGetNode.Line,
-			Field:   field + ".httpGet.port",
-			Message: "is required",
+			Message: field + ".httpGet.port is required",
 		})
 	} else if portNode.Kind != yaml.ScalarNode || portNode.Tag != "!!int" {
 		errors = append(errors, ValidationError{
 			Line:    portNode.Line,
-			Field:   "port",
-			Message: "must be int",
+			Message: "port must be int",
 		})
 	} else {
 		port, err := strconv.Atoi(portNode.Value)
 		if err != nil {
 			errors = append(errors, ValidationError{
 				Line:    portNode.Line,
-				Field:   "port",
-				Message: "must be int",
+				Message: "port must be int",
 			})
 		} else if port < portMin || port > portMax {
 			errors = append(errors, ValidationError{
 				Line:    portNode.Line,
-				Field:   "port",
-				Message: "value out of range",
+				Message: "port value out of range",
 			})
 		}
 	}
@@ -671,8 +611,7 @@ func validateResources(node *yaml.Node) []ValidationError {
 	if !hasLimits && !hasRequests {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "containers.resources",
-			Message: "must contain at least one of: requests, limits",
+			Message: "containers.resources must contain at least one of: requests, limits",
 		})
 	}
 
@@ -695,8 +634,7 @@ func validateResObj(node *yaml.Node, field string) []ValidationError {
 	if node.Kind != yaml.MappingNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   field,
-			Message: "must be mapping",
+			Message: field + " must be mapping",
 		})
 		return errors
 	}
@@ -706,8 +644,7 @@ func validateResObj(node *yaml.Node, field string) []ValidationError {
 		if cpuNode.Kind != yaml.ScalarNode || cpuNode.Tag != "!!int" {
 			errors = append(errors, ValidationError{
 				Line:    cpuNode.Line,
-				Field:   "cpu",
-				Message: "must be int",
+				Message: "cpu must be int",
 			})
 		}
 	}
@@ -717,14 +654,12 @@ func validateResObj(node *yaml.Node, field string) []ValidationError {
 		if memNode.Kind != yaml.ScalarNode {
 			errors = append(errors, ValidationError{
 				Line:    memNode.Line,
-				Field:   "memory",
-				Message: "must be string",
+				Message: "memory must be string",
 			})
 		} else if !memoryRegex.MatchString(memNode.Value) {
 			errors = append(errors, ValidationError{
 				Line:    memNode.Line,
-				Field:   "memory",
-				Message: fmt.Sprintf("has invalid format '%s'", memNode.Value),
+				Message: fmt.Sprintf("memory has invalid format '%s'", memNode.Value),
 			})
 		}
 	}
