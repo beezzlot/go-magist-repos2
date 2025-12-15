@@ -1,0 +1,12 @@
+apiVersion: v2
+kind: Pod
+metadata:
+  name: mypod
+spec:
+  containers:
+    - name: my_container
+      image: registry.bigbrother.io/myimage:v1.0.0
+      resources:
+        limits:
+          cpu: 2
+          memory: "500Mi"
