@@ -853,6 +853,9 @@ func validateResourceMap(node *yaml.Node, containerIndex int, resourceType strin
 
 		switch resourceName {
 		case "cpu":
+			// Проверяем, что значение является integer
+			// В YAML число может быть представлено как ScalarNode с числовым значением
+			// или как строка, содержащая число
 			if valueNode.Kind != yaml.ScalarNode {
 				errors = append(errors, ValidationError{
 					Line:    valueNode.Line,
@@ -860,13 +863,17 @@ func validateResourceMap(node *yaml.Node, containerIndex int, resourceType strin
 					Message: " must be integer",
 				})
 			} else {
-				// Пытаемся преобразовать в число
+				// Проверяем, можно ли преобразовать значение в целое число
 				if _, err := strconv.Atoi(valueNode.Value); err != nil {
-					errors = append(errors, ValidationError{
-						Line:    valueNode.Line,
-						Field:   fieldPrefix,
-						Message: " must be integer",
-					})
+					// Также проверяем, является ли значение целым числом в формате YAML
+					// (например, Tag == "!!int")
+					if valueNode.Tag != "!!int" {
+						errors = append(errors, ValidationError{
+							Line:    valueNode.Line,
+							Field:   fieldPrefix,
+							Message: " must be integer",
+						})
+					}
 				}
 			}
 		case "memory":
