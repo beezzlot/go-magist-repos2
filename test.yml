@@ -7,7 +7,7 @@
             dc: us-west-1
             group: gamma
         spec:
-          os: H7sSo
+          os: Vyp
           containers:
             - name: my_container_name
               image: registry.bigbrother.io/baseimage:v1.2.0
@@ -21,7 +21,7 @@
               livenessProbe:
                 httpGet:
                   path: /_alive
-                  port: 8080
+                  port: -8667
               resources:
                 limits:
                   cpu: 2
