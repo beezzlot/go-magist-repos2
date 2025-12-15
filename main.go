@@ -479,12 +479,13 @@ func validateContainerName(node *yaml.Node, index int) []ValidationError {
 		return errors
 	}
 
-	if node.Value == "" {
-		errors = append(errors, ValidationError{
-			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].name", index),
-			Message: " is required",
-		})
+if node.Value == "" {
+    errors = append(errors, ValidationError{
+        Line:    node.Line,
+        Field:   fmt.Sprintf("spec.containers[%d].name", index),
+        Message: " name is required",  // ← с пробелом и словом "name" в начале
+    })
+}
 	} else if !snakeCaseRegex.MatchString(node.Value) {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
