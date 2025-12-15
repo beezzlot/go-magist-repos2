@@ -214,15 +214,22 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 			if valueNode.Kind != yaml.ScalarNode {
 				errors = append(errors, ValidationError{
 					Line:    valueNode.Line,
-					Field:   "metadata.name",
+					Field:   "name",
 					Message: " must be string",
+				})
+			} else if valueNode.Value == "" {
+				// Проверяем, что имя не пустое
+				errors = append(errors, ValidationError{
+					Line:    valueNode.Line,
+					Field:   "name",
+					Message: " is required",
 				})
 			}
 		case "namespace":
 			if valueNode.Kind != yaml.ScalarNode {
 				errors = append(errors, ValidationError{
 					Line:    valueNode.Line,
-					Field:   "metadata.namespace",
+					Field:   "namespace",
 					Message: " must be string",
 				})
 			}
@@ -230,7 +237,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 			if valueNode.Kind != yaml.MappingNode {
 				errors = append(errors, ValidationError{
 					Line:    valueNode.Line,
-					Field:   "metadata.labels",
+					Field:   "labels",
 					Message: " must be mapping",
 				})
 			}
@@ -240,7 +247,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 	if !foundFields["name"] {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "metadata.name",
+			Field:   "name",
 			Message: " is required",
 		})
 	}
