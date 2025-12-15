@@ -539,34 +539,34 @@ func validatePort(node *yaml.Node, containerIndex, portIndex int) []ValidationEr
 
 func validatePortNumber(node *yaml.Node, containerIndex, portIndex int) []ValidationError {
 	var errors []ValidationError
-
+	
 	if node.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].containerPort", containerIndex, portIndex),
+			Field:   "containerPort",
 			Message: " must be integer",
 		})
 		return errors
 	}
-
+	
 	port, err := strconv.Atoi(node.Value)
 	if err != nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].containerPort", containerIndex, portIndex),
+			Field:   "containerPort",
 			Message: " must be integer",
 		})
 		return errors
 	}
-
+	
 	if port <= 0 || port >= 65536 {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].containerPort", containerIndex, portIndex),
+			Field:   "containerPort",
 			Message: " value out of range",
 		})
 	}
-
+	
 	return errors
 }
 
