@@ -339,12 +339,6 @@ func validateOS(node *yaml.Node) []ValidationError {
 				Message: " is required",
 			})
 		}
-	} else {
-		errors = append(errors, ValidationError{
-			Line:    node.Line,
-			Field:   "os",
-			Message: " must be string or mapping",
-		})
 	}
 
 	return errors
@@ -373,8 +367,10 @@ func validateContainers(node *yaml.Node) []ValidationError {
 	containerNames := make(map[string]bool)
 
 	for idx, containerNode := range node.Content {
-		errors = append(errors, validateContainer(containerNode, idx)...)
+		containerErrors := validateContainer(containerNode, idx)
+		errors = append(errors, containerErrors...)
 
+		// Извлекаем имя контейнера для проверки уникальности
 		if containerNode.Kind == yaml.MappingNode {
 			for i := 0; i < len(containerNode.Content); i += 2 {
 				if i+1 >= len(containerNode.Content) {
@@ -443,6 +439,7 @@ func validateContainer(node *yaml.Node, index int) []ValidationError {
 		}
 	}
 
+	// Проверяем обязательные поля
 	requiredFields := []string{"name", "image", "resources"}
 	for _, field := range requiredFields {
 		if !foundFields[field] {
@@ -469,7 +466,15 @@ func validateContainerName(node *yaml.Node, index int) []ValidationError {
 		return errors
 	}
 
-	if !snakeCaseRegex.MatchString(node.Value) {
+	// Проверяем, что имя не пустое
+	if node.Value == "" {
+		errors = append(errors, ValidationError{
+			Line:    node.Line,
+			Field:   fmt.Sprintf("spec.containers[%d].name", index),
+			Message: " is required",
+		})
+	} else if !snakeCaseRegex.MatchString(node.Value) {
+		// Проверяем формат snake_case только если строка не пустая
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
 			Field:   fmt.Sprintf("spec.containers[%d].name", index),
@@ -550,7 +555,7 @@ func validatePort(node *yaml.Node, containerIndex, portIndex int) []ValidationEr
 		switch keyNode.Value {
 		case "containerPort":
 			foundContainerPort = true
-			errors = append(errors, validatePortNumber(valueNode, containerIndex, portIndex)...)
+			errors = append(errors, validatePortNumber(valueNode, containerIndex, portIndex, "containerPort")...)
 		case "protocol":
 			errors = append(errors, validateProtocol(valueNode, containerIndex, portIndex)...)
 		}
@@ -567,13 +572,13 @@ func validatePort(node *yaml.Node, containerIndex, portIndex int) []ValidationEr
 	return errors
 }
 
-func validatePortNumber(node *yaml.Node, containerIndex, portIndex int) []ValidationError {
+func validatePortNumber(node *yaml.Node, containerIndex, portIndex int, fieldName string) []ValidationError {
 	var errors []ValidationError
 
 	if node.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].containerPort", containerIndex, portIndex),
+			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].%s", containerIndex, portIndex, fieldName),
 			Message: " must be integer",
 		})
 		return errors
@@ -583,7 +588,7 @@ func validatePortNumber(node *yaml.Node, containerIndex, portIndex int) []Valida
 	if err != nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].containerPort", containerIndex, portIndex),
+			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].%s", containerIndex, portIndex, fieldName),
 			Message: " must be integer",
 		})
 		return errors
@@ -592,7 +597,7 @@ func validatePortNumber(node *yaml.Node, containerIndex, portIndex int) []Valida
 	if port <= 0 || port >= 65536 {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].containerPort", containerIndex, portIndex),
+			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].%s", containerIndex, portIndex, fieldName),
 			Message: " value out of range",
 		})
 	}
@@ -854,12 +859,15 @@ func validateResourceMap(node *yaml.Node, containerIndex int, resourceType strin
 					Field:   fieldPrefix,
 					Message: " must be integer",
 				})
-			} else if _, err := strconv.Atoi(valueNode.Value); err != nil {
-				errors = append(errors, ValidationError{
-					Line:    valueNode.Line,
-					Field:   fieldPrefix,
-					Message: " must be integer",
-				})
+			} else {
+				// Пытаемся преобразовать в число
+				if _, err := strconv.Atoi(valueNode.Value); err != nil {
+					errors = append(errors, ValidationError{
+						Line:    valueNode.Line,
+						Field:   fieldPrefix,
+						Message: " must be integer",
+					})
+				}
 			}
 		case "memory":
 			if valueNode.Kind != yaml.ScalarNode {
