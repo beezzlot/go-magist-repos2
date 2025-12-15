@@ -90,12 +90,13 @@ func validateDocument(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
-	return validateTopLevelFields(node)
+	errors = append(errors, validateTopLevelFields(node)...)
+
+	return errors
 }
 
 func validateTopLevelFields(node *yaml.Node) []ValidationError {
 	var errors []ValidationError
-	fields := make(map[string]*yaml.Node)
 
 	for i := 0; i < len(node.Content); i += 2 {
 		if i+1 >= len(node.Content) {
@@ -104,24 +105,11 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 
-		if keyNode.Kind == yaml.ScalarNode {
-			fields[keyNode.Value] = valueNode
+		if keyNode.Kind != yaml.ScalarNode {
+			continue
 		}
-	}
 
-	requiredFields := []string{"apiVersion", "kind", "metadata", "spec"}
-	for _, field := range requiredFields {
-		if _, exists := fields[field]; !exists {
-			errors = append(errors, ValidationError{
-				Line:    node.Line,
-				Field:   field,
-				Message: fmt.Sprintf(" %s is required", field),
-			})
-		}
-	}
-
-	for name, valueNode := range fields {
-		switch name {
+		switch keyNode.Value {
 		case "apiVersion":
 			errors = append(errors, validateAPIVersion(valueNode)...)
 		case "kind":
@@ -130,6 +118,28 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 			errors = append(errors, validateMetadata(valueNode)...)
 		case "spec":
 			errors = append(errors, validateSpec(valueNode)...)
+		}
+	}
+
+	// Проверяем обязательные поля
+	fields := []string{"apiVersion", "kind", "metadata", "spec"}
+	for _, field := range fields {
+		found := false
+		for i := 0; i < len(node.Content); i += 2 {
+			if i >= len(node.Content) {
+				continue
+			}
+			if node.Content[i].Kind == yaml.ScalarNode && node.Content[i].Value == field {
+				found = true
+				break
+			}
+		}
+		if !found {
+			errors = append(errors, ValidationError{
+				Line:    node.Line,
+				Field:   field,
+				Message: fmt.Sprintf(" %s is required", field),
+			})
 		}
 	}
 
@@ -194,7 +204,8 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
-	fields := make(map[string]*yaml.Node)
+	// Ищем поле name
+	foundName := false
 	for i := 0; i < len(node.Content); i += 2 {
 		if i+1 >= len(node.Content) {
 			continue
@@ -202,26 +213,28 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 
-		if keyNode.Kind == yaml.ScalarNode {
-			fields[keyNode.Value] = valueNode
+		if keyNode.Kind == yaml.ScalarNode && keyNode.Value == "name" {
+			foundName = true
+			if valueNode.Kind != yaml.ScalarNode {
+				errors = append(errors, ValidationError{
+					Line:    valueNode.Line,
+					Field:   "name",
+					Message: " must be string",
+				})
+			} else if valueNode.Value == "" {
+				errors = append(errors, ValidationError{
+					Line:    valueNode.Line,
+					Field:   "name",
+					Message: " is required",
+				})
+			}
+			break
 		}
 	}
 
-	if nameNode, exists := fields["name"]; !exists {
+	if !foundName {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "name",
-			Message: " is required",
-		})
-	} else if nameNode.Kind != yaml.ScalarNode {
-		errors = append(errors, ValidationError{
-			Line:    nameNode.Line,
-			Field:   "name",
-			Message: " must be string",
-		})
-	} else if nameNode.Value == "" {
-		errors = append(errors, ValidationError{
-			Line:    nameNode.Line,
 			Field:   "name",
 			Message: " is required",
 		})
@@ -242,7 +255,6 @@ func validateSpec(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
-	fields := make(map[string]*yaml.Node)
 	for i := 0; i < len(node.Content); i += 2 {
 		if i+1 >= len(node.Content) {
 			continue
@@ -250,23 +262,36 @@ func validateSpec(node *yaml.Node) []ValidationError {
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 
-		if keyNode.Kind == yaml.ScalarNode {
-			fields[keyNode.Value] = valueNode
+		if keyNode.Kind != yaml.ScalarNode {
+			continue
+		}
+
+		switch keyNode.Value {
+		case "containers":
+			errors = append(errors, validateContainers(valueNode)...)
+		case "os":
+			errors = append(errors, validateOS(valueNode)...)
 		}
 	}
 
-	if containersNode, exists := fields["containers"]; !exists {
+	// Проверяем обязательное поле containers
+	foundContainers := false
+	for i := 0; i < len(node.Content); i += 2 {
+		if i >= len(node.Content) {
+			continue
+		}
+		if node.Content[i].Kind == yaml.ScalarNode && node.Content[i].Value == "containers" {
+			foundContainers = true
+			break
+		}
+	}
+
+	if !foundContainers {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
 			Field:   "spec.containers",
 			Message: " is required",
 		})
-	} else {
-		errors = append(errors, validateContainers(containersNode)...)
-	}
-
-	if osNode, exists := fields["os"]; exists {
-		errors = append(errors, validateOS(osNode)...)
 	}
 
 	return errors
@@ -284,7 +309,8 @@ func validateOS(node *yaml.Node) []ValidationError {
 			})
 		}
 	} else if node.Kind == yaml.MappingNode {
-		fields := make(map[string]*yaml.Node)
+		// Ищем поле name
+		foundName := false
 		for i := 0; i < len(node.Content); i += 2 {
 			if i+1 >= len(node.Content) {
 				continue
@@ -292,28 +318,30 @@ func validateOS(node *yaml.Node) []ValidationError {
 			keyNode := node.Content[i]
 			valueNode := node.Content[i+1]
 
-			if keyNode.Kind == yaml.ScalarNode {
-				fields[keyNode.Value] = valueNode
+			if keyNode.Kind == yaml.ScalarNode && keyNode.Value == "name" {
+				foundName = true
+				if valueNode.Kind != yaml.ScalarNode {
+					errors = append(errors, ValidationError{
+						Line:    valueNode.Line,
+						Field:   "os",
+						Message: " must be string",
+					})
+				} else if valueNode.Value != "linux" && valueNode.Value != "windows" {
+					errors = append(errors, ValidationError{
+						Line:    valueNode.Line,
+						Field:   "os",
+						Message: fmt.Sprintf(" os has unsupported value '%s'", valueNode.Value),
+					})
+				}
+				break
 			}
 		}
 
-		if nameNode, exists := fields["name"]; !exists {
+		if !foundName {
 			errors = append(errors, ValidationError{
 				Line:    node.Line,
 				Field:   "os",
 				Message: " is required",
-			})
-		} else if nameNode.Kind != yaml.ScalarNode {
-			errors = append(errors, ValidationError{
-				Line:    nameNode.Line,
-				Field:   "os",
-				Message: " must be string",
-			})
-		} else if nameNode.Value != "linux" && nameNode.Value != "windows" {
-			errors = append(errors, ValidationError{
-				Line:    nameNode.Line,
-				Field:   "os",
-				Message: fmt.Sprintf(" os has unsupported value '%s'", nameNode.Value),
 			})
 		}
 	}
@@ -342,12 +370,13 @@ func validateContainers(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
-	containerNames := make(map[string]bool)
-
 	for idx, containerNode := range node.Content {
-		containerErrors := validateContainer(containerNode, idx)
-		errors = append(errors, containerErrors...)
+		errors = append(errors, validateContainer(containerNode, idx)...)
+	}
 
+	// Проверяем уникальность имен контейнеров
+	containerNames := make(map[string]int)
+	for idx, containerNode := range node.Content {
 		if containerNode.Kind == yaml.MappingNode {
 			for i := 0; i < len(containerNode.Content); i += 2 {
 				if i+1 >= len(containerNode.Content) {
@@ -358,14 +387,15 @@ func validateContainers(node *yaml.Node) []ValidationError {
 
 				if keyNode.Kind == yaml.ScalarNode && keyNode.Value == "name" && valueNode.Kind == yaml.ScalarNode {
 					name := valueNode.Value
-					if containerNames[name] {
+					if prevIdx, exists := containerNames[name]; exists {
 						errors = append(errors, ValidationError{
 							Line:    valueNode.Line,
 							Field:   fmt.Sprintf("spec.containers[%d].name", idx),
-							Message: fmt.Sprintf(" duplicate container name '%s'", name),
+							Message: fmt.Sprintf(" duplicate container name, first used at index %d", prevIdx),
 						})
+					} else {
+						containerNames[name] = idx
 					}
-					containerNames[name] = true
 				}
 			}
 		}
@@ -386,22 +416,20 @@ func validateContainer(node *yaml.Node, index int) []ValidationError {
 		return errors
 	}
 
-	fields := make(map[string]*yaml.Node)
-	for i := 0; i < len(node.Content); i += 2 {
-		if i+1 >= len(node.Content) {
-			continue
-		}
-		keyNode := node.Content[i]
-		valueNode := node.Content[i+1]
-
-		if keyNode.Kind == yaml.ScalarNode {
-			fields[keyNode.Value] = valueNode
-		}
-	}
-
+	// Проверяем обязательные поля
 	requiredFields := []string{"name", "image", "resources"}
 	for _, field := range requiredFields {
-		if _, exists := fields[field]; !exists {
+		found := false
+		for i := 0; i < len(node.Content); i += 2 {
+			if i >= len(node.Content) {
+				continue
+			}
+			if node.Content[i].Kind == yaml.ScalarNode && node.Content[i].Value == field {
+				found = true
+				break
+			}
+		}
+		if !found {
 			errors = append(errors, ValidationError{
 				Line:    node.Line,
 				Field:   fmt.Sprintf("spec.containers[%d].%s", index, field),
@@ -410,18 +438,29 @@ func validateContainer(node *yaml.Node, index int) []ValidationError {
 		}
 	}
 
-	for fieldName, fieldNode := range fields {
-		switch fieldName {
+	// Проверяем все поля контейнера
+	for i := 0; i < len(node.Content); i += 2 {
+		if i+1 >= len(node.Content) {
+			continue
+		}
+		keyNode := node.Content[i]
+		valueNode := node.Content[i+1]
+
+		if keyNode.Kind != yaml.ScalarNode {
+			continue
+		}
+
+		switch keyNode.Value {
 		case "name":
-			errors = append(errors, validateContainerName(fieldNode, index)...)
+			errors = append(errors, validateContainerName(valueNode, index)...)
 		case "image":
-			errors = append(errors, validateImage(fieldNode, index)...)
+			errors = append(errors, validateImage(valueNode, index)...)
 		case "ports":
-			errors = append(errors, validatePorts(fieldNode, index)...)
+			errors = append(errors, validatePorts(valueNode, index)...)
 		case "readinessProbe", "livenessProbe":
-			errors = append(errors, validateProbe(fieldNode, index, fieldName)...)
+			errors = append(errors, validateProbe(valueNode, index, keyNode.Value)...)
 		case "resources":
-			errors = append(errors, validateResources(fieldNode, index)...)
+			errors = append(errors, validateResources(valueNode, index)...)
 		}
 	}
 
@@ -511,7 +550,8 @@ func validatePort(node *yaml.Node, containerIndex, portIndex int) []ValidationEr
 		return errors
 	}
 
-	fields := make(map[string]*yaml.Node)
+	// Ищем containerPort
+	foundContainerPort := false
 	for i := 0; i < len(node.Content); i += 2 {
 		if i+1 >= len(node.Content) {
 			continue
@@ -519,27 +559,27 @@ func validatePort(node *yaml.Node, containerIndex, portIndex int) []ValidationEr
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 
-		if keyNode.Kind == yaml.ScalarNode {
-			fields[keyNode.Value] = valueNode
+		if keyNode.Kind == yaml.ScalarNode && keyNode.Value == "containerPort" {
+			foundContainerPort = true
+			errors = append(errors, validateContainerPort(valueNode, containerIndex, portIndex)...)
+			break
 		}
 	}
 
-	if containerPortNode, exists := fields["containerPort"]; !exists {
+	if !foundContainerPort {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
 			Field:   fmt.Sprintf("spec.containers[%d].ports[%d].containerPort", containerIndex, portIndex),
 			Message: " is required",
 		})
-	} else {
-		errors = append(errors, validatePortNumber(containerPortNode, containerIndex, portIndex)...)
 	}
 
 	return errors
 }
 
-func validatePortNumber(node *yaml.Node, containerIndex, portIndex int) []ValidationError {
+func validateContainerPort(node *yaml.Node, containerIndex, portIndex int) []ValidationError {
 	var errors []ValidationError
-	
+
 	if node.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
@@ -548,7 +588,7 @@ func validatePortNumber(node *yaml.Node, containerIndex, portIndex int) []Valida
 		})
 		return errors
 	}
-	
+
 	port, err := strconv.Atoi(node.Value)
 	if err != nil {
 		errors = append(errors, ValidationError{
@@ -558,7 +598,7 @@ func validatePortNumber(node *yaml.Node, containerIndex, portIndex int) []Valida
 		})
 		return errors
 	}
-	
+
 	if port <= 0 || port >= 65536 {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
@@ -566,7 +606,7 @@ func validatePortNumber(node *yaml.Node, containerIndex, portIndex int) []Valida
 			Message: " value out of range",
 		})
 	}
-	
+
 	return errors
 }
 
@@ -582,7 +622,8 @@ func validateProbe(node *yaml.Node, containerIndex int, probeType string) []Vali
 		return errors
 	}
 
-	fields := make(map[string]*yaml.Node)
+	// Ищем httpGet
+	foundHTTPGet := false
 	for i := 0; i < len(node.Content); i += 2 {
 		if i+1 >= len(node.Content) {
 			continue
@@ -590,19 +631,19 @@ func validateProbe(node *yaml.Node, containerIndex int, probeType string) []Vali
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 
-		if keyNode.Kind == yaml.ScalarNode {
-			fields[keyNode.Value] = valueNode
+		if keyNode.Kind == yaml.ScalarNode && keyNode.Value == "httpGet" {
+			foundHTTPGet = true
+			errors = append(errors, validateHTTPGetAction(valueNode, containerIndex, probeType)...)
+			break
 		}
 	}
 
-	if httpGetNode, exists := fields["httpGet"]; !exists {
+	if !foundHTTPGet {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
 			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet", containerIndex, probeType),
 			Message: " is required",
 		})
-	} else {
-		errors = append(errors, validateHTTPGetAction(httpGetNode, containerIndex, probeType)...)
 	}
 
 	return errors
@@ -620,7 +661,10 @@ func validateHTTPGetAction(node *yaml.Node, containerIndex int, probeType string
 		return errors
 	}
 
-	fields := make(map[string]*yaml.Node)
+	// Ищем path и port
+	foundPath := false
+	foundPort := false
+
 	for i := 0; i < len(node.Content); i += 2 {
 		if i+1 >= len(node.Content) {
 			continue
@@ -628,39 +672,46 @@ func validateHTTPGetAction(node *yaml.Node, containerIndex int, probeType string
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 
-		if keyNode.Kind == yaml.ScalarNode {
-			fields[keyNode.Value] = valueNode
+		if keyNode.Kind != yaml.ScalarNode {
+			continue
+		}
+
+		switch keyNode.Value {
+		case "path":
+			foundPath = true
+			if valueNode.Kind != yaml.ScalarNode {
+				errors = append(errors, ValidationError{
+					Line:    valueNode.Line,
+					Field:   "path",
+					Message: " must be string",
+				})
+			} else if !strings.HasPrefix(valueNode.Value, "/") {
+				errors = append(errors, ValidationError{
+					Line:    valueNode.Line,
+					Field:   "path",
+					Message: fmt.Sprintf(" has invalid format '%s'", valueNode.Value),
+				})
+			}
+		case "port":
+			foundPort = true
+			errors = append(errors, validateProbePort(valueNode, containerIndex, probeType)...)
 		}
 	}
 
-	if pathNode, exists := fields["path"]; !exists {
+	if !foundPath {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet.path", containerIndex, probeType),
+			Field:   "path",
 			Message: " is required",
-		})
-	} else if pathNode.Kind != yaml.ScalarNode {
-		errors = append(errors, ValidationError{
-			Line:    pathNode.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet.path", containerIndex, probeType),
-			Message: " must be string",
-		})
-	} else if !strings.HasPrefix(pathNode.Value, "/") {
-		errors = append(errors, ValidationError{
-			Line:    pathNode.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet.path", containerIndex, probeType),
-			Message: fmt.Sprintf(" has invalid format '%s'", pathNode.Value),
 		})
 	}
 
-	if portNode, exists := fields["port"]; !exists {
+	if !foundPort {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet.port", containerIndex, probeType),
+			Field:   "port",
 			Message: " is required",
 		})
-	} else {
-		errors = append(errors, validateProbePort(portNode, containerIndex, probeType)...)
 	}
 
 	return errors
@@ -672,7 +723,7 @@ func validateProbePort(node *yaml.Node, containerIndex int, probeType string) []
 	if node.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet.port", containerIndex, probeType),
+			Field:   "port",
 			Message: " must be integer",
 		})
 		return errors
@@ -682,7 +733,7 @@ func validateProbePort(node *yaml.Node, containerIndex int, probeType string) []
 	if err != nil {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet.port", containerIndex, probeType),
+			Field:   "port",
 			Message: " must be integer",
 		})
 		return errors
@@ -691,7 +742,7 @@ func validateProbePort(node *yaml.Node, containerIndex int, probeType string) []
 	if port <= 0 || port >= 65536 {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet.port", containerIndex, probeType),
+			Field:   "port",
 			Message: " value out of range",
 		})
 	}
@@ -711,7 +762,33 @@ func validateResources(node *yaml.Node, containerIndex int) []ValidationError {
 		return errors
 	}
 
-	fields := make(map[string]*yaml.Node)
+	// Проверяем, что есть хотя бы одно из полей
+	hasRequests := false
+	hasLimits := false
+
+	for i := 0; i < len(node.Content); i += 2 {
+		if i >= len(node.Content) {
+			continue
+		}
+		keyNode := node.Content[i]
+		if keyNode.Kind == yaml.ScalarNode {
+			if keyNode.Value == "requests" {
+				hasRequests = true
+			} else if keyNode.Value == "limits" {
+				hasLimits = true
+			}
+		}
+	}
+
+	if !hasRequests && !hasLimits {
+		errors = append(errors, ValidationError{
+			Line:    node.Line,
+			Field:   fmt.Sprintf("spec.containers[%d].resources", containerIndex),
+			Message: " must contain at least one of: requests, limits",
+		})
+	}
+
+	// Проверяем requests и limits
 	for i := 0; i < len(node.Content); i += 2 {
 		if i+1 >= len(node.Content) {
 			continue
@@ -719,25 +796,12 @@ func validateResources(node *yaml.Node, containerIndex int) []ValidationError {
 		keyNode := node.Content[i]
 		valueNode := node.Content[i+1]
 
-		if keyNode.Kind == yaml.ScalarNode {
-			fields[keyNode.Value] = valueNode
+		if keyNode.Kind != yaml.ScalarNode {
+			continue
 		}
-	}
 
-	// Проверяем, что есть хотя бы одно из полей
-	if _, hasRequests := fields["requests"]; !hasRequests {
-		if _, hasLimits := fields["limits"]; !hasLimits {
-			errors = append(errors, ValidationError{
-				Line:    node.Line,
-				Field:   fmt.Sprintf("spec.containers[%d].resources", containerIndex),
-				Message: " must contain at least one of: requests, limits",
-			})
-		}
-	}
-
-	for fieldName, fieldNode := range fields {
-		if fieldName == "requests" || fieldName == "limits" {
-			errors = append(errors, validateResourceMap(fieldNode, containerIndex, fieldName)...)
+		if keyNode.Value == "requests" || keyNode.Value == "limits" {
+			errors = append(errors, validateResourceMap(valueNode, containerIndex, keyNode.Value)...)
 		}
 	}
 
@@ -767,23 +831,18 @@ func validateResourceMap(node *yaml.Node, containerIndex int, resourceType strin
 			continue
 		}
 
-		resourceName := keyNode.Value
-		fieldPrefix := fmt.Sprintf("spec.containers[%d].resources.%s.%s", containerIndex, resourceType, resourceName)
-
-		switch resourceName {
+		switch keyNode.Value {
 		case "cpu":
-			// CPU должно быть целым числом
 			if valueNode.Kind != yaml.ScalarNode {
 				errors = append(errors, ValidationError{
 					Line:    valueNode.Line,
-					Field:   fieldPrefix,
+					Field:   "cpu",
 					Message: " must be integer",
 				})
 			} else if valueNode.Tag != "!!int" {
-				// Проверяем тег YAML - должен быть !!int для целых чисел
 				errors = append(errors, ValidationError{
 					Line:    valueNode.Line,
-					Field:   fieldPrefix,
+					Field:   "cpu",
 					Message: " must be integer",
 				})
 			}
@@ -791,21 +850,21 @@ func validateResourceMap(node *yaml.Node, containerIndex int, resourceType strin
 			if valueNode.Kind != yaml.ScalarNode {
 				errors = append(errors, ValidationError{
 					Line:    valueNode.Line,
-					Field:   fieldPrefix,
+					Field:   "memory",
 					Message: " must be string",
 				})
 			} else if !memoryRegex.MatchString(valueNode.Value) {
 				errors = append(errors, ValidationError{
 					Line:    valueNode.Line,
-					Field:   fieldPrefix,
+					Field:   "memory",
 					Message: fmt.Sprintf(" has invalid format '%s'", valueNode.Value),
 				})
 			}
 		default:
 			errors = append(errors, ValidationError{
 				Line:    keyNode.Line,
-				Field:   fieldPrefix,
-				Message: fmt.Sprintf(" has unsupported value '%s'", resourceName),
+				Field:   keyNode.Value,
+				Message: fmt.Sprintf(" has unsupported value '%s'", keyNode.Value),
 			})
 		}
 	}
