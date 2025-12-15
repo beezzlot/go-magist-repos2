@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ValidationError представляет ошибку валидации
 type ValidationError struct {
 	Line    int
 	Field   string
@@ -23,6 +24,7 @@ func (e ValidationError) Format(filename string) string {
 	return fmt.Sprintf("%s %s", filename, e.Message)
 }
 
+// Константы и регулярные выражения
 var (
 	snakeCaseRegex = regexp.MustCompile(`^[a-z]+(_[a-z]+)*$`)
 	imageRegex     = regexp.MustCompile(`^registry\.bigbrother\.io/[^:]+:.+$`)
@@ -93,6 +95,7 @@ func validateDocument(node *yaml.Node) []ValidationError {
 	}
 
 	errors = append(errors, validateTopLevelFields(node)...)
+
 	return errors
 }
 
@@ -113,6 +116,7 @@ func getMap(m *yaml.Node, key string) (*yaml.Node, *yaml.Node) {
 func validateTopLevelFields(node *yaml.Node) []ValidationError {
 	var errors []ValidationError
 
+	// apiVersion
 	_, apiNode := getMap(node, "apiVersion")
 	if apiNode == nil {
 		errors = append(errors, ValidationError{
@@ -134,6 +138,7 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 		})
 	}
 
+	// kind
 	_, kindNode := getMap(node, "kind")
 	if kindNode == nil {
 		errors = append(errors, ValidationError{
@@ -155,6 +160,7 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 		})
 	}
 
+	// metadata
 	_, metaNode := getMap(node, "metadata")
 	if metaNode == nil {
 		errors = append(errors, ValidationError{
@@ -166,6 +172,7 @@ func validateTopLevelFields(node *yaml.Node) []ValidationError {
 		errors = append(errors, validateMetadata(metaNode)...)
 	}
 
+	// spec
 	_, specNode := getMap(node, "spec")
 	if specNode == nil {
 		errors = append(errors, ValidationError{
@@ -192,6 +199,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
+	// name
 	_, nameNode := getMap(node, "name")
 	if nameNode == nil {
 		errors = append(errors, ValidationError{
@@ -206,6 +214,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 			Message: "must be string",
 		})
 	} else if strings.TrimSpace(nameNode.Value) == "" {
+		// Для пустой строки используем просто "name"
 		errors = append(errors, ValidationError{
 			Line:    nameNode.Line,
 			Field:   "name",
@@ -213,6 +222,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 		})
 	}
 
+	// namespace (необязательное)
 	if _, nsNode := getMap(node, "namespace"); nsNode != nil && nsNode.Kind != yaml.ScalarNode {
 		errors = append(errors, ValidationError{
 			Line:    nsNode.Line,
@@ -221,6 +231,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 		})
 	}
 
+	// labels (необязательное)
 	if _, labelsNode := getMap(node, "labels"); labelsNode != nil {
 		if labelsNode.Kind != yaml.MappingNode {
 			errors = append(errors, ValidationError{
@@ -229,6 +240,7 @@ func validateMetadata(node *yaml.Node) []ValidationError {
 				Message: "must be mapping",
 			})
 		} else {
+			// Проверяем, что все значения - строки
 			for i := 0; i < len(labelsNode.Content)-1; i += 2 {
 				valueNode := labelsNode.Content[i+1]
 				if valueNode.Kind != yaml.ScalarNode {
@@ -258,10 +270,12 @@ func validateSpec(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
+	// os (необязательное)
 	if _, osNode := getMap(node, "os"); osNode != nil {
 		errors = append(errors, validateOS(osNode)...)
 	}
 
+	// containers (обязательное)
 	_, containersNode := getMap(node, "containers")
 	if containersNode == nil {
 		errors = append(errors, ValidationError{
@@ -344,11 +358,14 @@ func validateContainers(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
+	// Проверяем уникальность имен контейнеров
 	containerNames := make(map[string]bool)
+
 	for _, containerNode := range node.Content {
 		containerErrors := validateContainer(containerNode)
 		errors = append(errors, containerErrors...)
 
+		// Извлекаем имя для проверки уникальности
 		if containerNode.Kind == yaml.MappingNode {
 			_, nameNode := getMap(containerNode, "name")
 			if nameNode != nil && nameNode.Kind == yaml.ScalarNode && nameNode.Value != "" {
@@ -379,6 +396,7 @@ func validateContainer(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
+	// name (обязательное)
 	_, nameNode := getMap(node, "name")
 	if nameNode == nil {
 		errors = append(errors, ValidationError{
@@ -393,6 +411,7 @@ func validateContainer(node *yaml.Node) []ValidationError {
 			Message: "must be string",
 		})
 	} else {
+		// Для пустой строки
 		if strings.TrimSpace(nameNode.Value) == "" {
 			errors = append(errors, ValidationError{
 				Line:    nameNode.Line,
@@ -408,6 +427,7 @@ func validateContainer(node *yaml.Node) []ValidationError {
 		}
 	}
 
+	// image (обязательное)
 	_, imageNode := getMap(node, "image")
 	if imageNode == nil {
 		errors = append(errors, ValidationError{
@@ -429,6 +449,7 @@ func validateContainer(node *yaml.Node) []ValidationError {
 		})
 	}
 
+	// ports (необязательное)
 	if _, portsNode := getMap(node, "ports"); portsNode != nil {
 		if portsNode.Kind != yaml.SequenceNode {
 			errors = append(errors, ValidationError{
@@ -443,14 +464,17 @@ func validateContainer(node *yaml.Node) []ValidationError {
 		}
 	}
 
+	// readinessProbe (необязательное)
 	if _, probeNode := getMap(node, "readinessProbe"); probeNode != nil {
 		errors = append(errors, validateProbe(probeNode, "containers.readinessProbe")...)
 	}
 
+	// livenessProbe (необязательное)
 	if _, probeNode := getMap(node, "livenessProbe"); probeNode != nil {
 		errors = append(errors, validateProbe(probeNode, "containers.livenessProbe")...)
 	}
 
+	// resources (обязательное)
 	_, resourcesNode := getMap(node, "resources")
 	if resourcesNode == nil {
 		errors = append(errors, ValidationError{
@@ -483,6 +507,7 @@ func validateContainerPort(node *yaml.Node) []ValidationError {
 		return errors
 	}
 
+	// containerPort (обязательное)
 	_, portNode := getMap(node, "containerPort")
 	if portNode == nil {
 		errors = append(errors, ValidationError{
@@ -513,6 +538,7 @@ func validateContainerPort(node *yaml.Node) []ValidationError {
 		}
 	}
 
+	// protocol (необязательное)
 	if _, protoNode := getMap(node, "protocol"); protoNode != nil {
 		if protoNode.Kind != yaml.ScalarNode {
 			errors = append(errors, ValidationError{
@@ -547,6 +573,7 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 		return errors
 	}
 
+	// httpGet (обязательное)
 	_, httpGetNode := getMap(node, "httpGet")
 	if httpGetNode == nil {
 		errors = append(errors, ValidationError{
@@ -566,6 +593,7 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 		return errors
 	}
 
+	// path (обязательное)
 	_, pathNode := getMap(httpGetNode, "path")
 	if pathNode == nil {
 		errors = append(errors, ValidationError{
@@ -587,6 +615,7 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 		})
 	}
 
+	// port (обязательное)
 	_, portNode := getMap(httpGetNode, "port")
 	if portNode == nil {
 		errors = append(errors, ValidationError{
@@ -623,8 +652,10 @@ func validateProbe(node *yaml.Node, field string) []ValidationError {
 func validateResources(node *yaml.Node) []ValidationError {
 	var errors []ValidationError
 
+	// Проверяем, что есть хотя бы одно из полей
 	hasLimits := false
 	hasRequests := false
+
 	for i := 0; i < len(node.Content)-1; i += 2 {
 		keyNode := node.Content[i]
 		if keyNode.Kind == yaml.ScalarNode {
@@ -644,10 +675,12 @@ func validateResources(node *yaml.Node) []ValidationError {
 		})
 	}
 
+	// limits (необязательное)
 	if _, limitsNode := getMap(node, "limits"); limitsNode != nil {
 		errors = append(errors, validateResObj(limitsNode, "containers.resources.limits")...)
 	}
 
+	// requests (необязательное)
 	if _, requestsNode := getMap(node, "requests"); requestsNode != nil {
 		errors = append(errors, validateResObj(requestsNode, "containers.resources.requests")...)
 	}
@@ -667,6 +700,7 @@ func validateResObj(node *yaml.Node, field string) []ValidationError {
 		return errors
 	}
 
+	// cpu (необязательное)
 	if _, cpuNode := getMap(node, "cpu"); cpuNode != nil {
 		if cpuNode.Kind != yaml.ScalarNode || cpuNode.Tag != "!!int" {
 			errors = append(errors, ValidationError{
@@ -677,6 +711,7 @@ func validateResObj(node *yaml.Node, field string) []ValidationError {
 		}
 	}
 
+	// memory (необязательное)
 	if _, memNode := getMap(node, "memory"); memNode != nil {
 		if memNode.Kind != yaml.ScalarNode {
 			errors = append(errors, ValidationError{
