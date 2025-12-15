@@ -412,12 +412,13 @@ func validateContainer(node *yaml.Node) []ValidationError {
 		})
 	} else {
 		// Для пустой строки
-		if strings.TrimSpace(nameNode.Value) == "" {
-			errors = append(errors, ValidationError{
-				Line:    nameNode.Line,
-				Field:   "name",
-				Message: "is required",
-			})
+if strings.TrimSpace(nameNode.Value) == "" {
+    errors = append(errors, ValidationError{
+        Line:    nameNode.Line,
+        Field:   "name",
+        Message: "name is required",  // ← Добавьте "name " в начало
+    })
+}
 		} else if !snakeCaseRegex.MatchString(nameNode.Value) {
 			errors = append(errors, ValidationError{
 				Line:    nameNode.Line,
