@@ -742,8 +742,8 @@ func validateProbePort(node *yaml.Node, containerIndex int, probeType string) []
 	if port <= 0 || port >= 65536 {
 		errors = append(errors, ValidationError{
 			Line:    node.Line,
-			Field:   "port",
-			Message: " value out of range",
+			Field:   fmt.Sprintf("spec.containers[%d].%s.httpGet.port", containerIndex, probeType),
+			Message: " port value out of range",
 		})
 	}
 
